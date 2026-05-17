@@ -1,0 +1,72 @@
+不讲蓝牙相关部分。
+
+我的项目基于 STM32F411 + FreeRTOS + LVGL，主要通过 FreeRTOS 任务、消息队列和硬件中间层完成手表的页面刷新、传感器采集、低功耗管理和数据保存。
+
+项目中的 FreeRTOS 线程实际共有 13 个：
+
+高优先级任务：
+1. HardwareInitTask：硬件初始化任务，优先级 osPriorityHigh3。负责 RTC 唤醒、UART DMA、PWM、按键、电源、传感器、EEPROM、LCD、LVGL 等初始化。初始化完成后调用 vTaskDelete(NULL) 自删除。
+2. WDOGFeedTask：看门狗喂狗任务，优先级 osPriorityHigh2。周期性喂狗，防止系统异常卡死。
+3. StopEnterTask：待机/STOP 模式进入与恢复任务，优先级 osPriorityHigh1。收到 Stop_MessageQueue 消息后关闭背光、复位 LCD、触摸进入休眠、反初始化 UART，暂停调度器并进入 STOP 模式；唤醒后恢复系统时钟、看门狗、UART、LCD、触摸，并发送 HomeUpdata_MessageQueue 更新主界面数据。
+4. IdleEnterTask：低功耗亮度管理任务，优先级 osPriorityHigh。收到 Idle_MessageQueue 后将屏幕亮度降到 5；收到 IdleBreak_MessageQueue 后清零 IdleTimerCount 并恢复用户设置的亮度。
+
+中优先级任务：
+5. KeyTask：按键检测任务，优先级 osPriorityNormal。检测按键后向 Key_MessageQueue 发送按键消息，同时向 IdleBreak_MessageQueue 发送消息打断空闲计时；在主页面按下特定按键时会发送 Stop_MessageQueue 进入待机。
+
+低优先级任务：
+6. MPUCheckTask：抬腕检测任务，优先级 osPriorityLow2。根据 MPU6050 判断手腕状态，支持抬腕唤醒、放腕进入待机。
+7. DataSaveTask：数据保存任务，优先级 osPriorityLow2。收到 DataSave_MessageQueue 后保存抬腕开关、APP 同步开关和当天步数；跨天时会清零步数。
+8. LvHandlerTask：LVGL 处理任务，优先级 osPriorityLow。周期调用 lv_task_handler，同时根据触摸屏非活动时间判断是否打断空闲计时。
+9. ScrRenewTask：页面更新/按键页面响应任务，优先级 osPriorityLow1。消费 Key_MessageQueue，根据按键执行页面返回、返回底部页面，并在退出部分页面时关闭心率或指南针相关传感器。
+10. SensorDataTask：传感器数据更新任务，优先级 osPriorityLow1。收到 HomeUpdata_MessageQueue 后更新电量、步数、温湿度，并触发数据保存；在环境页面、指南针页面等特定页面中周期更新对应传感器数据。
+11. HRDataTask：心率更新任务，优先级 osPriorityLow1。进入心率页面后唤醒 EM7028 心率传感器，周期计算并更新心率数据，同时保持系统不进入空闲待机。
+12. ChargPageEnterTask：充电页面切换任务，优先级 osPriorityLow1。检测充电中断标志，根据充电状态进入或退出充电页面。
+13. MessageSendTask：串口消息处理任务，优先级 osPriorityLow1。处理 UART 接收到的命令，例如版本查询、数据发送、时间设置等；如果面试中不讲蓝牙，可以只说明它是串口通信/命令处理任务。
+
+低功耗机制：
+系统使用一个 100ms 周期的软件定时器 IdleTimerHandle，在 IdleTimerCallback 中累加 IdleTimerCount。
+当 IdleTimerCount 达到 ui_LTimeValue * 10 时，向 Idle_MessageQueue 发送消息，IdleEnterTask 将亮度降到 5。
+当 IdleTimerCount 达到 ui_TTimeValue * 10 时，向 Stop_MessageQueue 发送消息，StopEnterTask 进入 STOP 待机模式。
+触摸屏有操作、按键按下、心率/环境/指南针等特定页面正在工作时，会向 IdleBreak_MessageQueue 发送消息，把 IdleTimerCount 清零并恢复亮度。
+
+消息队列实际有 6 个：
+1. Key_MessageQueue：按键消息队列。
+2. Idle_MessageQueue：进入低亮度空闲状态。
+3. Stop_MessageQueue：进入 STOP 待机模式。
+4. IdleBreak_MessageQueue：打断空闲计时，恢复亮度。
+5. HomeUpdata_MessageQueue：通知主页面相关数据更新。
+6. DataSave_MessageQueue：通知 EEPROM 数据保存。
+
+硬件数据访问方式：
+项目使用 HWDataAccess 作为硬件中间层，把 RTC、电源、LCD、MPU6050、AHT21、SPL06、LSM303、EM7028 等硬件接口统一封装到 HWInterface 结构体中。传感器任务负责更新 HWInterface 中的数据，LVGL 页面需要显示数据时再从 HWInterface 获取，降低了 UI 层和 BSP/HAL 层之间的耦合，也方便后续做 PC 仿真或移植。
+
+资源占用：
+根据当前 build/OV_Watch.elf 统计：
+Flash 约 438 KB，占 512 KB 的约 84%。
+RAM 静态占用约 102 KB，占 128 KB 的约 78%。
+
+当手表进入待机状态后，会关闭任务调度器，暂停各种外设，关闭中断，但会留下rtc由lse低速时钟控制继续运行，定时唤醒mcu，mcu恢复systlick和系统时钟，然后检测mpu是否被唤醒，如果检测到抬腕就退出stop模式，如果没有则继续进入stop模式
+手表有配置按键按下触发中断，也会退出stop模式
+
+LvHandlerTask:用于更新lvgl的画面
+ScrRenewTask:控制页面切换，以及对一些页面进行退出之后的处理
+
+为什么拆开？主要是职责分离。LvHandlerTask 要高频、短周期运行，保证 GUI 流畅；
+ScrRenewTask 是按键事件驱动，只有按键消息来了才做页面切换和传感器收尾。
+把按键业务逻辑塞进 lv_task_handler 循环会让 GUI 主循环变重，也不利于维护。
+
+另外注意一个细节：LVGL 本身通常不是线程安全的。
+这个项目里 ScrRenewTask 也直接调用了 Page_Back() 这类 LVGL/页面函数，
+但没有看到互斥锁保护。
+由于 ScrRenewTask 优先级 osPriorityLow1 高于 LvHandlerTask 的 osPriorityLow，
+它可能在 LVGL handler 之外操作页面对象。
+简单项目里可能能跑，
+但严格来说更稳的做法是：按键任务只发事件，统一让 LVGL 线程执行页面切换，
+或者给所有 LVGL API 加 mutex。
+
+项目里对 AHT21 做了一层硬件抽象。底层驱动是 AHT_Init()、AHT_Read()，但应用层不直接依赖这些函数，
+而是通过 HWInterface.AHT21 这个结构体访问。
+结构体里保存连接状态、温度、湿度，同时用函数指针封装初始化和读取方法。
+这样 UI 或任务层只面向 HWInterface.AHT21.GetHumiTemp() 编程，
+如果后面换成 SHT30 或其他温湿度传感器，只需要改 HWDataAccess.c 里的函数绑定，
+应用层逻辑基本不用动。

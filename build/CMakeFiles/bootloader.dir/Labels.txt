@@ -1,0 +1,13 @@
+# Target labels
+ bootloader
+# Source files and their labels
+D:/espkaiyuan/daima/14-handheld/build/CMakeFiles/bootloader
+D:/espkaiyuan/daima/14-handheld/build/CMakeFiles/bootloader.rule
+D:/espkaiyuan/daima/14-handheld/build/CMakeFiles/bootloader-complete.rule
+D:/espkaiyuan/daima/14-handheld/build/bootloader-prefix/src/bootloader-stamp/bootloader-build.rule
+D:/espkaiyuan/daima/14-handheld/build/bootloader-prefix/src/bootloader-stamp/bootloader-configure.rule
+D:/espkaiyuan/daima/14-handheld/build/bootloader-prefix/src/bootloader-stamp/bootloader-download.rule
+D:/espkaiyuan/daima/14-handheld/build/bootloader-prefix/src/bootloader-stamp/bootloader-install.rule
+D:/espkaiyuan/daima/14-handheld/build/bootloader-prefix/src/bootloader-stamp/bootloader-mkdir.rule
+D:/espkaiyuan/daima/14-handheld/build/bootloader-prefix/src/bootloader-stamp/bootloader-patch.rule
+D:/espkaiyuan/daima/14-handheld/build/bootloader-prefix/src/bootloader-stamp/bootloader-update.rule

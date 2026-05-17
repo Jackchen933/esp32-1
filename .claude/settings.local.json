@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/ESPIDF/v5.5.2/esp-idf/components/esp_driver_i2c/include/**)",
+      "Read(//d/ESPIDF/v5.5.2/esp-idf/components/**)",
+      "Read(//d d:/espkaiyuan/daima/**)",
+      "Bash(d:\\\\ESPIDF\\\\TOOLS\\\\python_env\\\\idf5.5_py3.11_env\\\\Scripts\\\\python.exe d:\\\\ESPIDF\\\\v5.5.2\\\\esp-idf\\\\tools\\\\idf.py build)",
+      "Bash(python d:/ESPIDF/v5.5.2/esp-idf/tools/idf.py build)"
+    ]
+  }
+}

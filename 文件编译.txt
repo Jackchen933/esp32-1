@@ -1,0 +1,78 @@
+powershell
+
+[93/2016] Generating ../../partition_table/partition-table.bin                                                                                                             
+Partition table binary generated. Contents:
+*******************************************************************************
+# ESP-IDF Partition Table
+# Name, Type, SubType, Offset, Size, Flags
+nvs,data,nvs,0x9000,24K,
+phy_init,data,phy,0xf000,4K,
+factory,app,factory,0x10000,8M,
+storage,data,spiffs,0x810000,3M,
+*******************************************************************************
+[1482/2016] Performing configure step for 'bootloader'                                                                                                                     
+-- Found Git: D:/å›?23/Git/cmd/git.exe (found version "2.52.0.windows.1")
+-- Minimal build - OFF
+-- The C compiler identification is GNU 14.2.0
+-- The CXX compiler identification is GNU 14.2.0
+-- The ASM compiler identification is GNU
+-- Found assembler: D:/ESPIDF/TOOLS/tools/xtensa-esp-elf/esp-14.2.0_20251107/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc.exe
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+[1936/2016] Building CXX object esp-idf/chmorgan__esp-audio-player/CMakeFiles/__idf_chmorgan__esp-audio-player.dir/audio_player.cpp.obj
+D:/espkaiyuan/daima/14-handheld/managed_components/chmorgan__esp-audio-player/audio_player.cpp: In function 'esp_err_t audio_player_new(audio_player_config_t)':
+D:/espkaiyuan/daima/14-handheld/managed_components/chmorgan__esp-audio-player/audio_player.cpp:568:9: warning: type qualifiers ignored on cast result type [-Wignored-qualifiers]
+  568 |         (TaskHandle_t * const)  NULL,
+      |         ^
+[1985/2016] Building C object esp-idf/espressif__esp_lvgl_port/CMakeFiles/__idf_espressif__esp_lvgl_port.dir/esp_lvgl_port.c.obj
+D:/espkaiyuan/daima/14-handheld/managed_components/espressif__esp_lvgl_port/esp_lvgl_port.c: In function 'lvgl_port_touchpad_read':
+D:/espkaiyuan/daima/14-handheld/managed_components/espressif__esp_lvgl_port/esp_lvgl_port.c:817:5: warning: 'esp_lcd_touch_get_coordinates' is deprecated: This API will be removed in version 2.0.0. Use esp_lcd_touch_get_data instead! [-Wdeprecated-declarations]
+  817 |     bool touchpad_pressed = esp_lcd_touch_get_coordinates(touch_ctx->handle, touchpad_x, touchpad_y, NULL, &touchpad_cnt, 1);
+      |     ^~~~
+In file included from D:/espkaiyuan/daima/14-handheld/managed_components/espressif__esp_lvgl_port/include/esp_lvgl_port.h:20,
+                 from D:/espkaiyuan/daima/14-handheld/managed_components/espressif__esp_lvgl_port/esp_lvgl_port.c:17:
+D:/espkaiyuan/daima/14-handheld/managed_components/espressif__esp_lcd_touch/include/esp_lcd_touch.h:317:6: note: declared here
+  317 | bool esp_lcd_touch_get_coordinates(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y, uint16_t *strength, uint8_t *point_num, uint8_t max_point_num);
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+mimax
+set HTTP_PROXY= http://127.0.0.1:7897  
+set HTTPS_PROXY= http://127.0.0.1:7897
+$env:ANTHROPIC_BASE_URL = "  https://api.minimaxi.com/anthropic  "
+$env:ANTHROPIC_AUTH_TOKEN = "sk-cp-5CAnmC2dv0LoNJLHXNrBUgVy2SD6fXQc6ekQC5jwp89DY8NyLkc3DZWlLLfYqqK59TwDJERvwkubYhBPtzoidFWJnBa67celB6xCOKXhS4hnOTSwFM57kBM"
+
+glm
+set HTTP_PROXY= http://127.0.0.1:7897  
+set HTTPS_PROXY= http://127.0.0.1:7897
+$env:ANTHROPIC_BASE_URL = "  https://open.bigmodel.cn/api/anthropic  "
+$env:ANTHROPIC_AUTH_TOKEN = "3d2e078b089047cdbe38dc9ab46192c2.bvFdV5oCn0rmXWpm"
+
+my-glm
+set HTTP_PROXY= http://127.0.0.1:7897  
+set HTTPS_PROXY= http://127.0.0.1:7897
+$env:ANTHROPIC_BASE_URL = "  https://open.bigmodel.cn/api/anthropic  "
+$env:ANTHROPIC_AUTH_TOKEN = "56fd0dc89f9042638b9da7863ec303cf.l3DhASJFVUI1fOk3"
+
+
+claude -c --dangerously-skip-permissions
+claude -r --dangerously-skip-permissions
+claude --dangerously-skip-permissions
+
+ESP-IDF: Build your project
+ESP-IDF: Flash your device
+
+cd "D:/xm1sbiao/OV-Watch-main/Software/OV_Watch"
+make clean
+make -j4
+openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c "program build/OV_Watch.bin 0x08000000 verify reset exit"
+
+set HTTP_PROXY= http://127.0.0.1:7897  
+set HTTPS_PROXY= http://127.0.0.1:7897
+$env:ANTHROPIC_BASE_URL = "  https://main.codesuc.top/api  "
+$env:ANTHROPIC_AUTH_TOKEN = "cr_439bc6a08628faf5ce1b609724b9a9fd39873d5c683690cacda7e5fb51ce1790"
+
+
+set HTTP_PROXY= http://127.0.0.1:7897  
+set HTTPS_PROXY= http://127.0.0.1:7897
+$env:ANTHROPIC_BASE_URL = "  https://main-new.codesuc.top  "
+$env:ANTHROPIC_AUTH_TOKEN = "sk-3Bx78EqkHsrbTCzxAQYTGspAh3jhuth0GhJFxEy1TV9cZKWG"

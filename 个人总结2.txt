@@ -1,0 +1,159 @@
+不讲蓝牙和 Wi-Fi 相关部分。
+
+我的项目是一个基于 ESP32-S3 + ESP-IDF + FreeRTOS + LVGL 的智能掌机项目。
+它的功能包括图形界面、姿态传感器、音乐播放、摄像头预览、SD 卡文件浏览、SPIFFS 资源管理、
+音频 codec、LCD/触摸和板级外设驱动。
+
+从产品形态上看，它更接近一个小型智能掌机：正面是 320x240 彩色 LCD 和触摸交互，内部集成音频播放、
+外部存储、摄像头、姿态传感器等模块。主界面是类似掌机应用菜单的入口，
+用户通过触摸图标进入不同功能页。
+
+从整体架构上看，项目可以分成三层：
+
+1. BSP 板级驱动层：
+主要在 main/esp32_s3_szp.c 和 main/esp32_s3_szp.h 中实现，
+负责 I2C、LCD、触摸、背光 PWM、QMI8658 姿态传感器、PCA9557 IO 扩展、摄像头、
+SD 卡、SPIFFS、I2S、音频 codec 等底层能力。
+
+2. FreeRTOS 业务调度层：
+负责把耗时、阻塞或者异步的功能拆成任务，例如开机音播放、主菜单切换、姿态页初始化、
+SD 卡挂载扫描、摄像头取帧等。
+
+3. LVGL UI 层：
+主要在 main/app_ui.c 中实现，负责开机动画、掌机主菜单、各个应用页面、按钮事件回调
+和周期 UI 刷新。项目中很多周期刷新不是单独开 FreeRTOS 任务，而是使用 LVGL 的 lv_timer。
+
+启动流程：
+
+系统入口是 main.c 里的 app_main()。启动后先初始化 NVS，然后初始化 BSP 外设：
+
+1. bsp_i2c_init()：初始化 I2C 主总线，并挂载 QMI8658 和 PCA9557。
+2. pca9557_init()：初始化 IO 扩展芯片，用于控制 LCD_CS、功放 PA_EN、摄像头电源等。
+3. bsp_lvgl_start()：初始化 LVGL、LCD、触摸屏，并把 LCD 和触摸设备注册到 LVGL port。
+4. bsp_spiffs_mount()：挂载 SPIFFS 文件系统，用于读取 spiffs 目录下的 MP3 资源。
+5. bsp_codec_init()：初始化 I2S、ES8311 播放 codec 和 ES7210 录音 codec。
+6. lv_gui_start()：显示开机 logo 动画。
+
+初始化完成后，系统创建 my_event_group 事件组，并创建两个启动阶段任务：
+
+1. power_music_task：
+运行在 Core 1，优先级 5，栈大小 4KB。它播放内嵌的 sword.pcm 开机音，播放前打开功放，播放结束后关闭功放，并通过 xEventGroupSetBits 设置 START_MUSIC_COMPLETED 事件位，最后 vTaskDelete(NULL) 自删除。
+
+2. main_page_task：
+运行在 Core 0，优先级 5，栈大小 4KB。它通过 xEventGroupWaitBits 阻塞等待 START_MUSIC_COMPLETED。只有开机音播放完成后，才调用 lv_main_page() 删除开机 logo 并进入掌机主菜单，然后自删除。
+
+我认为这个启动设计比较清晰：开机音播放和主菜单切换没有用轮询或延时硬等，而是用 EventGroup 做阶段同步。这样开机音播放耗时变化时，主菜单进入时机仍然可靠。
+
+项目中显式创建的主要 FreeRTOS 任务：
+
+1. power_music_task：
+开机音频播放任务。负责 I2S 数据预加载、播放 PCM、控制功放、发送开机完成事件。
+
+2. main_page_task：
+主菜单切换任务。等待开机音完成后进入 LVGL 主页面。
+
+3. task_process_att：
+姿态传感器页面初始化任务。进入姿态页面后创建，负责初始化 QMI8658，创建姿态显示控件，然后创建 200ms 周期的 lv_timer 更新姿态数据。任务本身完成初始化后自删除。
+
+4. task_process_sdcard：
+SD 卡页面初始化任务。负责挂载 SD 卡，读取容量信息，扫描文件目录，把结果填充到 LVGL 列表中。扫描完成后自删除。
+
+5. task_process_camera：
+摄像头页面运行任务。进入摄像头页面后创建，在 icon_flag == 4 时循环调用 esp_camera_fb_get() 获取图像帧，把帧数据设置给 LVGL 图片对象显示，退出页面后反初始化摄像头并删除任务。
+
+另外，音频播放器组件 esp-audio-player 内部也会创建自己的播放任务。项目在 mp3_player_init() 中把播放器优先级设置为 6，coreID 设置为 1，比大多数自建业务任务优先级更高，这样可以减少音乐播放被普通 UI 任务打断的概率。
+
+项目中使用的同步和通信机制：
+
+1. my_event_group：
+用于启动阶段同步。power_music_task 播放完成后设置 START_MUSIC_COMPLETED，main_page_task 等待这个事件位后进入主菜单。
+
+2. xQueueLCDFrame：
+底层预留的视频帧队列，容量为 2，元素是 camera_fb_t 指针。它把摄像头采集任务和 LCD 显示任务拆开，是一条更标准的“采集 -> 队列 -> 显示”的流水线。不过当前 UI 页面实际使用的是 app_ui.c 中的单任务摄像头预览路径。
+
+3. icon_flag：
+这是一个全局页面状态变量，用于标记当前进入哪个应用页面，例如 0 表示主菜单，1 表示姿态页，2 表示音乐页，3 表示 SD 卡页，4 表示摄像头页。摄像头任务会通过 while(icon_flag == 4) 判断是否继续运行。
+
+4. lvgl_port_lock() / lvgl_port_unlock()：
+因为 LVGL 本身通常不是线程安全的，所以项目中很多跨任务更新 UI 的地方都使用 lvgl_port_lock/unlock 保护临界区。这一点在姿态初始化、SD 卡页面等地方都有体现。
+
+主菜单和应用页面：
+
+项目主菜单由 lv_main_page() 创建，分辨率是 320x240，界面上以图标形式组织功能入口，整体更像掌机的应用启动器。当前如果不讲蓝牙和 Wi-Fi，主要介绍下面 4 个应用：
+
+1. 姿态监测：
+使用 QMI8658 读取加速度和陀螺仪数据，通过 qmi8658_fetch_angleFromAcc() 计算 X/Y/Z 倾角，并通过 lv_bar 和 label 显示。还会读取 motion 状态，用于判断静止、运动或剧烈运动。
+
+2. 音乐播放：
+音乐文件来自 SPIFFS 分区中的 MP3。项目通过 esp-file-iterator 枚举文件，通过 esp-audio-player 解码播放，通过回调函数接入自己的 BSP 音频输出。播放、暂停、上一首、下一首、音量调节都在 LVGL 页面中完成。
+
+3. SD 卡浏览：
+进入页面后挂载 SD 卡，读取容量和目录内容，再用 LVGL list 显示文件列表。这里把挂载和首轮扫描放进 FreeRTOS 任务里，避免在点击事件回调里做重 I/O。
+
+4. 摄像头预览：
+进入页面后初始化摄像头，配置为 RGB565、QVGA、fb_count=2、PSRAM 帧缓冲，并创建摄像头任务循环取帧显示到 LVGL 图片对象上。
+
+从掌机角度看，这几个功能分别对应了设备的几个核心能力：LCD/触摸负责交互显示，音频模块负责媒体播放和提示音，SD/SPIFFS 负责本地资源管理，摄像头负责图像输入，QMI8658 姿态传感器可以作为运动检测或体感交互的基础。
+
+硬件抽象理解：
+
+这个项目的 BSP 层比较集中，main/esp32_s3_szp.c 相当于板级硬件中间层。上层 UI 不直接操作 LCD SPI、I2C 寄存器、I2S codec、SDMMC、摄像头引脚，而是通过 bsp_* 或 qmi8658_* 这类函数访问。
+
+例如：
+
+1. QMI8658：
+底层通过 i2c_master_transmit_receive 读寄存器，通过 qmi8658_register_write_byte 写寄存器。应用层只需要调用 qmi8658_init()、qmi8658_fetch_angleFromAcc()、qmi8658_fetch_motion()。
+
+2. LCD 和触摸：
+bsp_lvgl_start() 内部完成 lvgl_port_init、LCD panel 注册、触摸注册、背光打开。UI 层只关心 LVGL 对象，不需要知道 ST7789 初始化细节。
+
+3. 音频：
+bsp_codec_init() 负责 I2S、ES8311、ES7210 初始化。播放器只需要通过 _audio_player_write_fn 调用 bsp_i2s_write() 输出 PCM 数据。
+
+4. SPIFFS：
+spiffs_create_partition_image(storage ../spiffs FLASH_IN_PROJECT) 会把 spiffs 目录打包到 storage 分区。音乐播放器运行时从 SPIFFS_BASE 枚举 MP3 文件。
+
+这种分层的好处是 UI 层和硬件细节解耦。如果以后更换 LCD、触摸芯片或 codec，理论上主要改 BSP 层，上层页面逻辑不用大改。
+
+我对项目中几个设计点的理解：
+
+1. 为什么开机音和主菜单切换要拆成两个任务？
+因为开机音播放是一个耗时 I/O 动作，主菜单显示又依赖它完成。拆成两个任务后，用 EventGroup 同步，比直接在 app_main() 里阻塞播放再进入主菜单更清晰，也能体现 FreeRTOS 的异步阶段控制。
+
+2. 为什么姿态页面用 Task + lv_timer，而不是一直开一个姿态任务？
+task_process_att 只负责传感器初始化和 UI 创建，真正的 200ms 周期刷新交给 lv_timer。这样可以减少常驻任务数量，并且让 UI 刷新节奏跟 LVGL 框架保持一致。
+
+3. 为什么音频播放器任务优先级更高？
+音频播放对连续性要求高，如果解码或 I2S 输出被频繁打断，用户会听到卡顿。项目把播放器优先级设为 6，并绑定到 Core 1，是为了让音频流处理比普通 UI 任务更稳定。
+
+4. 为什么很多任务都使用 xTaskCreatePinnedToCore？
+ESP32-S3 是双核芯片，项目把 UI、音频、外设处理分散到不同核心上，可以减少高频 I/O 和 UI 更新挤在同一个核心造成的抖动。缺点是后续维护时需要开发者更清楚每个任务的负载，否则可能出现某个核心过载。
+
+项目中我认为做得比较好的地方：
+
+1. 启动链路清晰，开机音和主菜单用事件组同步，没有靠硬延时。
+2. BSP 层把 LCD、触摸、音频、摄像头、SD 卡、传感器封装起来，上层页面调用比较简单。
+3. 对重 I/O 或阻塞操作使用 FreeRTOS 任务承载，例如 SD 卡挂载、摄像头取帧。
+4. 对周期 UI 刷新更多使用 LVGL timer，而不是每个页面都创建常驻任务。
+5. 资源管理方式比较完整，既有编译期内嵌的 sword.pcm，也有 SPIFFS 分区中的 MP3 文件。
+6. 使用 PSRAM、双缓冲、DMA、摄像头 fb_count=2 等配置来提升显示和图像处理能力。
+
+当前项目中也有一些可以优化的地方：
+
+1. 摄像头任务里的 LVGL 更新不够稳：
+task_process_camera 中直接调用 lv_img_set_src()，没有看到对应的 lvgl_port_lock/unlock。严格来说，跨任务操作 LVGL 对象应该加锁，否则在并发刷新时可能有偶发显示异常。
+
+2. 摄像头帧指针生命周期偏紧：
+当前逻辑是拿到 frame 后把 frame->buf 设置给 LVGL 图片对象，然后马上 esp_camera_fb_return(frame)。如果 LVGL 还没真正完成消费，理论上可能出现画面撕裂或数据被复用的问题。更稳的做法是复制到专用显示缓冲，或者改用底层已经预留的 xQueueLCDFrame 双任务显示流水线。
+
+3. icon_flag 承担了太多职责：
+它既表示当前页面，又控制某些任务退出。小项目可以这样写，但页面变多后会导致状态耦合。更工程化的方式是页面状态归 UI 管理，任务退出用队列命令、事件位或 task notification。
+
+4. 部分任务没有保存 TaskHandle：
+现在很多任务创建后依赖自删除或全局状态退出，调试和强制回收不太方便。后续可以给关键任务保留 TaskHandle，便于做状态查询、超时处理和明确回收。
+
+如果面试中让我总结这个项目，我会这样说：
+
+这个项目是一个基于 ESP32-S3 的智能掌机综合应用。系统用 ESP-IDF 和 FreeRTOS 做底层调度，用 LVGL 做图形界面，用 BSP 层统一封装 LCD、触摸、姿态传感器、音频、摄像头、SD 卡和文件系统。启动阶段通过 EventGroup 保证开机音播放完成后再进入掌机主菜单；功能页面按需创建任务，耗时操作放到 FreeRTOS 任务中，周期 UI 刷新交给 LVGL timer。音频部分通过 esp-audio-player 解码，通过 BSP 的 I2S/codec 接口输出；摄像头部分使用 PSRAM 双帧缓冲进行实时预览。整体上，它体现的是掌机类设备常见的“显示交互 + 本地媒体 + 外设输入 + 多任务调度”的嵌入式架构。
+
+我对这个项目最大的理解是：它不是简单地“每个功能开一个死循环任务”，而是把 FreeRTOS 用在真正需要并发、阻塞等待和异步同步的地方，把 UI 刷新和交互事件交给 LVGL 自己处理。这个思路能让任务数量保持可控，也能让业务逻辑、硬件驱动和界面显示之间的边界更清楚。
