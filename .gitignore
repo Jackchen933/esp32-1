@@ -1,0 +1,14 @@
+# ESP-IDF build artifacts
+build/
+sdkconfig.old
+
+# Component manager downloaded components (restored by `idf.py reconfigure`)
+managed_components/
+
+# VS Code / IDE
+.vscode/
+.idea/
+.cache/
+
+# Personal files, never publish
+嵌入式实习简历.html

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <string.h>
-#include "math.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_check.h"
@@ -22,8 +21,8 @@
 #include "driver/ledc.h"
 #include "driver/i2s_std.h"
 
-#include "esp_spiffs.h"
 #include "esp_vfs_fat.h"
+#include "wear_levelling.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdmmc_host.h"
 
@@ -40,100 +39,6 @@ esp_err_t bsp_i2c_init(void);   // 初始化I2C接口
 /***************************  I2C ↑  *******************************************/
 /*******************************************************************************/
 
-
-/*******************************************************************************/
-/***************************  姿态传感器 QMI8658 ↓   ****************************/
-#define  QMI8658_SENSOR_ADDR       0x6A   // QMI8658 I2C地址
-
-// QMI8658寄存器地址
-enum qmi8658_reg
-{
-    QMI8658_WHO_AM_I,
-    QMI8658_REVISION_ID,
-    QMI8658_CTRL1,
-    QMI8658_CTRL2,
-    QMI8658_CTRL3,
-    QMI8658_CTRL4,
-    QMI8658_CTRL5,
-    QMI8658_CTRL6,
-    QMI8658_CTRL7,
-    QMI8658_CTRL8,
-    QMI8658_CTRL9,
-    QMI8658_CATL1_L,
-    QMI8658_CATL1_H,
-    QMI8658_CATL2_L,
-    QMI8658_CATL2_H,
-    QMI8658_CATL3_L,
-    QMI8658_CATL3_H,
-    QMI8658_CATL4_L,
-    QMI8658_CATL4_H,
-    QMI8658_FIFO_WTM_TH,
-    QMI8658_FIFO_CTRL,
-    QMI8658_FIFO_SMPL_CNT,
-    QMI8658_FIFO_STATUS,
-    QMI8658_FIFO_DATA,
-    QMI8658_STATUSINT = 45,
-    QMI8658_STATUS0,
-    QMI8658_STATUS1,
-    QMI8658_TIMESTAMP_LOW,
-    QMI8658_TIMESTAMP_MID,
-    QMI8658_TIMESTAMP_HIGH,
-    QMI8658_TEMP_L,
-    QMI8658_TEMP_H,
-    QMI8658_AX_L,
-    QMI8658_AX_H,
-    QMI8658_AY_L,
-    QMI8658_AY_H,
-    QMI8658_AZ_L,
-    QMI8658_AZ_H,
-    QMI8658_GX_L,
-    QMI8658_GX_H,
-    QMI8658_GY_L,
-    QMI8658_GY_H,
-    QMI8658_GZ_L,
-    QMI8658_GZ_H,
-    QMI8658_COD_STATUS = 70,
-    QMI8658_dQW_L = 73,
-    QMI8658_dQW_H,
-    QMI8658_dQX_L,
-    QMI8658_dQX_H,
-    QMI8658_dQY_L,
-    QMI8658_dQY_H,
-    QMI8658_dQZ_L,
-    QMI8658_dQZ_H,
-    QMI8658_dVX_L,
-    QMI8658_dVX_H,
-    QMI8658_dVY_L,
-    QMI8658_dVY_H,
-    QMI8658_dVZ_L,
-    QMI8658_dVZ_H,
-    QMI8658_TAP_STATUS = 89,
-    QMI8658_STEP_CNT_LOW,
-    QMI8658_STEP_CNT_MIDL,
-    QMI8658_STEP_CNT_HIGH,
-    QMI8658_RESET = 96
-};
-
-// 倾角结构体
-typedef struct{
-    int16_t acc_x;
-	int16_t acc_y;
-	int16_t acc_z;
-	int16_t gyr_x;
-	int16_t gyr_y;
-	int16_t gyr_z;
-	float AngleX;
-	float AngleY;
-	float AngleZ;
-}t_sQMI8658;
-
-esp_err_t qmi8658_init(void);  // QMI8658初始化
-void qmi8658_close(void); // 关闭芯片运行
-void qmi8658_fetch_angleFromAcc(t_sQMI8658 *p);  // 获取倾角
-uint8_t qmi8658_fetch_motion(void); // 获取运动状态
-
-/***************************  姿态传感器 QMI8658 ↑  ****************************/
-/*******************************************************************************/
 
 /******************************************************************************/
 /***************************   I2S  ↓    **************************************/
@@ -163,7 +68,6 @@ uint8_t qmi8658_fetch_motion(void); // 获取运动状态
 
 #define LCD_CS_GPIO                 BIT(0)    // PCA9557_GPIO_NUM_1
 #define PA_EN_GPIO                  BIT(1)    // PCA9557_GPIO_NUM_2
-#define DVP_PWDN_GPIO               BIT(2)    // PCA9557_GPIO_NUM_3
 
 #define PCA9557_SENSOR_ADDR             0x19        /*!< Slave address of the MPU9250 sensor */
 
@@ -172,7 +76,6 @@ uint8_t qmi8658_fetch_motion(void); // 获取运动状态
 void pca9557_init(void);
 void lcd_cs(uint8_t level);
 void pa_en(uint8_t level);
-void dvp_pwdn(uint8_t level);
 /***************    IO扩展芯片 ↑   *************************/
 /***********************************************************/
 
@@ -194,7 +97,7 @@ void dvp_pwdn(uint8_t level);
 #define BSP_LCD_SPI_CS        (GPIO_NUM_NC)
 #define BSP_LCD_DC            (GPIO_NUM_39)
 #define BSP_LCD_RST           (GPIO_NUM_NC)
-#define BSP_LCD_BACKLIGHT     (GPIO_NUM_42)  
+#define BSP_LCD_BACKLIGHT     (GPIO_NUM_42)
 
 #define BSP_LCD_DRAW_BUF_HEIGHT    (20)
 
@@ -211,57 +114,19 @@ void bsp_lvgl_start(void);
 
 
 /***********************************************************/
-/****************    摄像头 ↓   ****************************/
-#define CAMERA_EN    1
-#if CAMERA_EN
-#include "esp_camera.h"
+/************  SPI Flash FATFS文件系统 ↓  ******************/
+#define FLASH_FATFS_BASE        "/flashfs"   // SPI Flash FATFS 挂载路径
 
-#define CAMERA_PIN_PWDN -1
-#define CAMERA_PIN_RESET -1
-#define CAMERA_PIN_XCLK 5
-#define CAMERA_PIN_SIOD 1
-#define CAMERA_PIN_SIOC 2
+esp_err_t bsp_flash_fatfs_mount(void);  // 挂载SPI Flash上的FATFS分区(磨损均衡)
 
-#define CAMERA_PIN_D7 9
-#define CAMERA_PIN_D6 4
-#define CAMERA_PIN_D5 6
-#define CAMERA_PIN_D4 15
-#define CAMERA_PIN_D3 17
-#define CAMERA_PIN_D2 8
-#define CAMERA_PIN_D1 18
-#define CAMERA_PIN_D0 16
-#define CAMERA_PIN_VSYNC 3
-#define CAMERA_PIN_HREF 46
-#define CAMERA_PIN_PCLK 7
-
-
-#define XCLK_FREQ_HZ 24000000
-
-void bsp_camera_init(void);
-void app_camera_lcd(void);
-
-#endif
-/********************    摄像头 ↑   *************************/
-/***********************************************************/
-
-
-
-
-/***********************************************************/
-/***************    SPIFFS文件系统 ↓   *********************/
-#define SPIFFS_BASE             "/spiffs"
-
-esp_err_t bsp_spiffs_mount(void);
-
-/***************    SPIFFS文件系统 ↑  *********************/
+/************  SPI Flash FATFS文件系统 ↑  ******************/
 /**********************************************************/
-
 
 
 /***********************************************************/
 /**********************    SD卡 ↓   *********************/
 /* SD card GPIOs */
-#define SD_CMD_IO      (48) 
+#define SD_CMD_IO      (48)
 #define SD_CLK_IO      (47)
 #define SD_DAT0_IO     (21)
 
@@ -273,13 +138,8 @@ esp_err_t bsp_sdcard_unmount(void); // 卸载SD卡
 /**********************************************************/
 
 
-
-
-
-
 /***********************************************************/
 /*********************    音频 ↓   *************************/
-#define ADC_I2S_CHANNEL 4
 
 #define VOLUME_DEFAULT    60        // 默认声音大小 0~100
 
@@ -304,11 +164,7 @@ esp_err_t bsp_speaker_set_fs(uint32_t rate, uint32_t bits_cfg, i2s_slot_mode_t c
 esp_err_t bsp_codec_mute_set(bool enable);
 esp_err_t bsp_codec_volume_set(int volume, int *volume_set);
 
-int bsp_get_feed_channel(void);
-esp_err_t bsp_get_feed_data(bool is_get_raw_channel, int16_t *buffer, int buffer_len);
-
 #define START_MUSIC_COMPLETED            BIT0
-#define WIFI_SET_START                   BIT1
 void power_music_task(void *pvParameters);
 
 /*********************    音频 ↑   *************************/
